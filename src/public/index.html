@@ -1,0 +1,382 @@
+<html>
+  <head>
+    <script src='http://code.jquery.com/jquery-1.6.1.min.js'></script>
+    <script src='/socket.io/socket.io.js'></script>
+    <script type ="text/javascript" src="/cfg-library.js"></script>
+  </head>
+  <style>
+    #divMain{
+      height:720px; 
+      width: 100%
+    }
+    #div1 {
+       width:49.5%;
+       height:720px;
+       border:3px ridge maroon;
+       float: left;
+       overflow: hidden;
+    }
+    #div1 img{
+      width: 100%;
+      height: 100%;
+    }   
+    #div2 {
+       width:49.5%;
+       height:720px;
+       border:3px ridge maroon;
+       float: right;
+       overflow: hidden;
+    }
+    #div2 img{
+      width: 100%;
+      height: 100%;
+    }
+    #divImg {
+      text-align: left;
+    }
+    #divImg img{
+      width:150px;
+      height:150px; 
+      margin-top: 10px; 
+      margin-left: 10px; 
+      cursor: "move"
+    }
+  </style>
+  <body>
+    <div class="filebutton1"><input type="file" id="fileinput1" accept="image/*"></div>
+    <div id="divImg"></div>
+    <br>
+    <div id="divMain" > 
+      <div id="div1" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+      <div id="div2" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+    </div>
+    <br>
+    <button id= "First" onclick="firstImage()">first</button>
+    <button id= "Previous" onClick="prevImage()">prev</button>
+    <button id= "Next" onClick="switchImage()">next</button>
+    <button id= "Last" onClick="lastImage()">last</button>
+    <script type ="text/javascript">
+      configuration();
+    </script>
+  </body>
+  <script>
+    //Connecting client to server
+    var socket = io.connect();
+
+    var imageNum = 0;
+    imageArray = new Array();
+
+    configuration();
+
+    function md_SetBackgroundColor(colorspec){
+      window.bodyBgColor = colorspec;
+    }
+
+    function md_SetMainWindow(pos){
+      switch(pos) {
+        case "left":
+          window.main_window = '#div1';
+          window.main_window_img = '#div1>img';
+          window.alt_window = '#div2';
+          window.alt_window_img = '#div2>img';
+        break;
+        case "right":
+          window.main_window = '#div2';
+          window.main_window_img = '#div2>img';
+          window.alt_window = '#div1';
+          window.alt_window_img = '#div1>img';
+        break;
+        default:
+      }
+    }
+
+    function md_SetAltWindowUpdate(mode){
+      switch(mode){
+        case "manual":
+          window.alt_set = 'manual';
+        break;
+        case "next":
+          window.alt_set = 'next';
+        break;
+        case "prev":
+          window.alt_set = 'prev';
+        break;
+        default:
+      }
+    }
+      
+    /*Adding images to an array and displaying as thumbnails*/
+    function md_LoadImage(imgfile){
+      $('#divImg').append('<img id ="'+imageNum+'" draggable="true" ondragstart="drag(event)" src="' + imgfile + '" />');
+      imageArray[imageNum++] = new imageItem(imgfile);
+    }
+    var totalImages = imageArray.length;
+
+    //index of last image
+    var length = totalImages - 1;
+          
+    function imageItem(image_location){
+      this.image_item = new Image();
+      this.image_item.src = image_location;
+    }
+
+    function get_ImageItemLocation(imageObj){
+      return(imageObj.image_item.src);
+    }
+
+    function getNextImage(id){
+      id = (id+1)%totalImages;
+      var new_image = get_ImageItemLocation(imageArray[id]);
+      return(new_image);
+    }
+
+    function getPrevImage(id){
+      id = (id-1)%totalImages;
+      var new_image = get_ImageItemLocation(imageArray[id]);
+      return (new_image);
+    }
+
+    function prevImage(){
+      /*Both Main window and alternate window display the previous image from the thumbnails*/
+      if(alt_set == 'next'){
+        //get the present position of the main window
+        var main_id = parseInt($(main_window_img).attr("id"));
+        var main_image = getPrevImage(main_id);
+        var mid = (main_id - 1)%totalImages;
+        $(main_window_img).remove();
+        $(main_window).append('<img id="'+ mid +'" src="' + main_image + '"/>');
+        //update changes to the client
+        socket.emit('drag_main',main_image);
+
+        //get the present position of alternate window
+        var alt_id = parseInt($(alt_window_img).attr("id"));
+        var alt_image = getPrevImage(alt_id);
+        var aid = (alt_id - 1)%totalImages;
+        $(alt_window_img).remove();
+        $(alt_window).append('<img id="'+ aid +'" src="' + alt_image + '"/>');
+        //update changes to the client
+        socket.emit('drag_alt',alt_image);
+      }
+      else
+        /*Main window displays the previous image and alternate window displays the last image displayed by main window*/
+        if(alt_set == 'prev'){
+          var main_id = parseInt($(main_window_img).attr("id"));
+          var main_image = getPrevImage(main_id);
+          var mid = (main_id - 1)%totalImages;
+          $(main_window_img).remove();
+          $(main_window).append('<img id="'+ mid +'" src="' + main_image + '"/>');
+          socket.emit('drag_main',main_image);
+
+          var alt_image = get_ImageItemLocation(imageArray[main_id]);
+          $(alt_window_img).remove();
+          $(alt_window).append('<img id="'+ main_id +'" src="' + alt_image + '"/>');
+          socket.emit('drag_alt',alt_image);
+        }
+        else{
+          /*Only the main window gets updated*/
+          var main_id = parseInt($(main_window_img).attr("id"));
+          var main_image = getPrevImage(main_id);
+          var mid = (main_id - 1)%totalImages;
+          $(main_window_img).remove();
+          $(main_window).append('<img id="'+ mid +'" src="' + main_image + '"/>');
+          socket.emit('drag_main',main_image);
+        }
+      }
+
+    function switchImage(){
+        /*Both Main window and alternate window display the next image from thumbnails*/
+        if(alt_set == 'next'){
+          var main_id = parseInt($(main_window_img).attr("id"));
+          var main_image = getNextImage(main_id);
+          var mid = (main_id + 1)%totalImages;
+          $(main_window_img).remove();
+          $(main_window).append('<img id="'+ mid +'" src="' + main_image + '"/>');
+          socket.emit('drag_main',main_image);
+
+          var alt_id = parseInt($(alt_window_img).attr("id"));
+          var alt_image = getNextImage(alt_id);
+          var aid = (alt_id + 1)%totalImages;
+          $(alt_window_img).remove();
+          $(alt_window).append('<img id="'+ aid +'" src="' + alt_image + '"/>');
+          socket.emit('drag_alt',alt_image);
+        }
+        else
+          /*Main window displays the next image and alternate window displays the last image displayed by main window*/
+          if(alt_set == 'prev'){
+            var main_id = parseInt($(main_window_img).attr("id"));
+            var main_image = getNextImage(main_id);
+            var mid = (main_id + 1)%totalImages;
+            $(main_window_img).remove();
+            $(main_window).append('<img id="'+ mid +'" src="' + main_image + '"/>');
+            socket.emit('drag_main',main_image);
+
+            var alt_image = get_ImageItemLocation(imageArray[main_id]);
+            $(alt_window_img).remove();
+            $(alt_window).append('<img id="'+ main_id +'" src="' + alt_image + '"/>');
+            socket.emit('drag_alt',alt_image);
+          }
+          else{
+            /*Only the main window gets updated to the next image*/
+            var main_id = parseInt($(main_window_img).attr("id"));
+            var main_image = getNextImage(main_id);
+            var mid = (main_id + 1)%totalImages;
+            $(main_window_img).remove();
+            $(main_window).append('<img id="'+ mid +'" src="' + main_image + '"/>');
+            socket.emit('drag_main',main_image);
+          }     
+      }
+
+    function firstImage(){
+        /*Both main window and alternate window display the first image in the list of thumbnails*/
+        if(alt_set == 'next'){
+          var first_image = get_ImageItemLocation(imageArray[0]);
+          $(main_window_img).remove();
+          $(main_window).append('<img id="'+ 0 +'" src="' + first_image + '"/>');
+          socket.emit('drag_main',first_image);
+          $(alt_window_img).remove();
+          $(alt_window).append('<img id="'+ 0 +'" src="' + first_image + '"/>');
+          socket.emit('drag_alt',first_image);
+        }
+        else
+          /*Main window displays the first image and alternate window displays the last image displayed by main window*/
+          if(alt_set == 'prev'){
+            var main_id = parseInt($(main_window_img).attr("id"));
+            var first_image = get_ImageItemLocation(imageArray[0]);
+            $(main_window_img).remove();
+            $(main_window).append('<img id="'+ 0 +'" src="' + first_image + '"/>');
+            socket.emit('drag_main',first_image);
+
+            var alt_image = get_ImageItemLocation(imageArray[main_id]);
+            $(alt_window_img).remove();
+            $(alt_window).append('<img id="'+ main_id +'" src="' + alt_image + '"/>');
+            socket.emit('drag_alt',alt_image);
+          }
+        else{
+            /*Only Main window gets updated to the first image, alternate window can be updated manually by drag and drop*/ 
+            var first_image = get_ImageItemLocation(imageArray[0]);
+            $(main_window_img).remove();
+            $(main_window).append('<img id="'+ 0 +'" src="' + first_image + '"/>');
+            socket.emit('drag_main',first_image);
+        }
+    }
+
+    function lastImage(){
+        /*Both Main winow and alternate window display the last image in the thumbnails*/
+        if(alt_set == 'next'){
+          var last_image = get_ImageItemLocation(imageArray[length]);
+          $(main_window_img).remove();
+          $(main_window).append('<img id="'+ length +'" src="' + last_image + '"/>');
+          socket.emit('drag_main',last_image);
+          $(alt_window_img).remove();
+          $(alt_window).append('<img id="'+ length +'" src="' + last_image + '"/>');
+          socket.emit('drag_alt',last_image);
+        }
+        else
+          /*Main window displays the last image in the list and alternate window displays the image last displayed by Main window*/
+          if(alt_set == 'prev'){
+            var main_id = parseInt($(main_window_img).attr("id"));
+            var last_image = get_ImageItemLocation(imageArray[length]);
+            $(main_window_img).remove();
+            $(main_window).append('<img id="'+ length +'" src="' + last_image + '"/>');
+            socket.emit('drag_main',last_image);
+
+            var alt_image = get_ImageItemLocation(imageArray[main_id]);
+            $(alt_window_img).remove();
+            $(alt_window).append('<img id="'+ main_id +'" src="' + alt_image + '"/>');
+            socket.emit('drag_other',alt_image);
+          }
+        else{
+            /*Main window is updated to last and alternate window can be updated manually*/
+            var last_image = get_ImageItemLocation(imageArray[length]);
+            $(main_window_img).remove();
+            $(main_window).append('<img id="'+ length +'" src="' + last_image + '"/>');
+            socket.emit('drag_main',last_image);
+            //$(alt_window_img).remove();            
+        }
+    }
+    /*Send the alternate window changes to be displayed to client*/
+    socket.on('drag_alt', function image2(base64Image) {
+      $(alt_window_img).remove();
+      $(alt_window).append('<img src="' + base64Image + '"/>');
+    });
+
+    /*Send Main window changes to be displayed to client*/
+    socket.on('drag_main', function image3(base64Image) {
+      $(main_window_img).remove();
+      $(main_window).append('<img src="' + base64Image + '"/>');
+    });
+
+    /*Send first window changes to client */
+    socket.on('drop1', function image4(base64Image) {
+      $('#div1>img').remove();
+      $('#div1').append('<img src="' + base64Image + '"/>');
+    });
+
+    /*Send second window changes to client*/
+    socket.on('drop2', function image5(base64Image) {
+      $('#div2>img').remove();
+      $('#div2').append('<img src="' + base64Image + '"/>');
+    });
+
+    /*Update layout of the display*/
+    socket.on('user image', function image(base64Image){
+      $('#divImg').remove();
+      $('#fileinput1').remove();
+      $('#Previous').remove();
+      $('#Next').remove();
+      $('#First').remove();
+      $('#Last').remove();
+      $('#divMain').height()
+      $('#divMain').height(1200);
+      $('#div1').height(1200);
+      $('#div2').height(1200);
+      $(main_window_img).remove();
+      $(main_window).append('<img src="' + base64Image + '"/>');
+      $(alt_window_img).remove();
+      $(alt_window).append('<img src=" "/>');
+      document.body.style.backgroundColor = bodyBgColor;
+    });
+
+    /*Display images in windows of the controller*/
+    function image1 (base64Image) {
+      $(main_window_img).remove();
+      $(main_window).append('<img src="' + base64Image + '"/>');
+      $(alt_window_img).remove();
+      $(alt_window).append('<img src=" "/>');
+    }
+
+    function allowDrop(ev) {
+      ev.preventDefault();
+    }
+
+    function drag(ev) {
+      ev.dataTransfer.setData("src", ev.target.id); 
+      ev.dataTransfer.setData("text"); 
+    }
+
+    function drop(ev) {
+      ev.preventDefault();
+      var src = document.getElementById(ev.dataTransfer.getData("src")).cloneNode(true);
+      var tgt = ev.currentTarget.firstElementChild;
+      ev.currentTarget.replaceChild(src,tgt);
+      var imgsend = ev.dataTransfer.getData("text");
+      if(ev.currentTarget == div1)
+       socket.emit('drop1',imgsend);
+      else
+       socket.emit('drop2',imgsend);  
+    };
+
+    /*Upload image handler*/
+    $(function () {
+      $('#fileinput1').bind('change', function (e){
+        var data = e.originalEvent.target.files[0];
+        var reader = new FileReader();
+        reader.onload = function(evt){
+          image1(evt.target.result);
+          socket.emit('user image', evt.target.result);
+        };
+        reader.readAsDataURL(data);
+      });
+    });
+  </script>
+</html>
